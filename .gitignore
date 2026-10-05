@@ -1,0 +1,29 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# next.js
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo
+
+# desktop / tauri
+src-tauri/target/
+src-tauri/gen/schemas
+
+# env - never commit real credentials
+.env
+.env.local
+.env*.local
+
+# local sqlite database
+data/
+
+# logs & os cruft
+*.log
+dev.err
+build-all-done.txt
+.DS_Store
+Thumbs.db
