@@ -48,6 +48,12 @@ export function isPro(): boolean {
   // or any environment without a window there is no user to gate, so the
   // pipeline runs freely — the gate is purely a browser-session concern.
   if (typeof window === "undefined") return true;
+
+  // Local builds default to unlocked so the lossy pipeline can be exercised
+  // without a checkout. `process.env.NODE_ENV` is replaced at build time, so a
+  // production bundle never inherits this.
+  if (process.env.NODE_ENV !== "production") return true;
+
   return current === "pro";
 }
 
