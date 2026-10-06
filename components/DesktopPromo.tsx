@@ -30,9 +30,12 @@ import {
  */
 interface Props {
   compact?: boolean;
+  /** Render the compact pill as a ghost/outline button instead of a filled one,
+   *  so it stays quiet beside the main navigation. */
+  ghost?: boolean;
 }
 
-export function DesktopPromo({ compact = true }: Props) {
+export function DesktopPromo({ compact = true, ghost = false }: Props) {
   const [isDesktop, setIsDesktop] = useState<boolean | null>(null);
   const [target, setTarget] = useState<DownloadTarget | null>(null);
   const [available, setAvailable] = useState<boolean | null>(null);
@@ -131,6 +134,11 @@ export function DesktopPromo({ compact = true }: Props) {
   // banner panel, so it fits in the header's right-hand group next to the
   // account panel and the settings button.
   if (compact) {
+    // Ghost by default in the header so the pill never competes with the
+    // Workspace tabs; the full banner path can still request the filled look.
+    const ghostClass = ghost
+      ? "border border-slate-700 text-slate-300 hover:text-cyan-300 hover:border-cyan-500/40 bg-transparent"
+      : "bg-surface-raised border border-slate-700 text-slate-200 hover:text-slate-50 hover:border-cyan-500/50";
     return (
       <div className="flex items-center gap-2 shrink-0" ref={ref}>
         {primaryUrl ? (
@@ -138,7 +146,7 @@ export function DesktopPromo({ compact = true }: Props) {
             href={primaryUrl}
             target="_blank"
             rel="noreferrer"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-l-xl text-xs font-semibold bg-surface-raised border border-slate-700 text-slate-200 hover:text-slate-50 hover:border-cyan-500/50 transition-colors"
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-l-xl text-xs font-semibold transition-colors ${ghostClass}`}
           >
             <Download className="w-3.5 h-3.5" />
             {target ? target.buttonLabel : "Download Desktop App"}
@@ -160,7 +168,11 @@ export function DesktopPromo({ compact = true }: Props) {
             aria-expanded={open}
             aria-label="Other platforms"
             title="Other platforms"
-            className="flex items-center px-2 py-1.5 rounded-r-xl text-xs font-semibold bg-slate-900 border border-l-0 border-slate-700 text-slate-400 hover:text-slate-50 hover:border-cyan-500/50 transition-colors"
+            className={`flex items-center px-2 py-1.5 rounded-r-xl text-xs font-semibold border border-l-0 transition-colors ${
+              ghost
+                ? "border-slate-700 text-slate-400 hover:text-cyan-300 hover:border-cyan-500/40 bg-transparent"
+                : "bg-slate-900 border-slate-700 text-slate-400 hover:text-slate-50 hover:border-cyan-500/50"
+            }`}
           >
             <ChevronDown
               className={`w-3.5 h-3.5 transition-transform ${open ? "rotate-180" : ""}`}

@@ -2,7 +2,6 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import {
-  Settings,
   SplitSquareVertical,
   Layers,
   BarChart3,
@@ -396,12 +395,15 @@ export default function Home() {
               <div className="flex items-center gap-2">
                 <h1 className="text-lg font-extrabold tracking-tight text-slate-50 flex items-center gap-1.5 font-sans">
                   Tokenizer
-                  <span className="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400/80 border border-cyan-500/20 font-mono tracking-wider">
+                  <span
+                    title="No cloud, no API keys — compression runs entirely on this machine. Add Supabase keys to enable sync."
+                    className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/25 font-mono tracking-wider cursor-help"
+                  >
                     Local
                   </span>
                 </h1>
               </div>
-              <p className="text-xs text-slate-400 font-medium">
+              <p className="text-xs text-slate-300 font-medium">
                 Same meaning. Fewer tokens.
               </p>
             </div>
@@ -431,8 +433,8 @@ export default function Home() {
                     onClick={() => setActiveTab(id)}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
                       active
-                        ? "bg-gradient-to-r from-violet-600/90 to-cyan-600/90 text-white shadow-sm"
-                        : "text-slate-400 hover:text-slate-100 hover:bg-surface-raised"
+                        ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 shadow-sm"
+                        : "text-slate-300 hover:text-slate-50 hover:bg-surface-raised"
                     }`}
                   >
                     <Icon className="w-3.5 h-3.5" /> {label}
@@ -448,18 +450,12 @@ export default function Home() {
                 isSupabase={supabaseReady}
                 onSignedIn={() => void loadHistory()}
                 onSignedOut={() => void loadHistory()}
+                onOpenSettings={() => setIsSettingsOpen(true)}
               />
               {/* Desktop installer: top of the page, not buried below the sample
-                  prompts, so it is visible before any scrolling. */}
-              <DesktopPromo />
-              <button
-                onClick={() => setIsSettingsOpen(true)}
-                className="p-2 rounded-xl bg-surface-raised border border-slate-800 text-slate-300 hover:text-slate-50 hover:border-slate-700 transition-colors"
-                title="Settings"
-                aria-label="Settings"
-              >
-                <Settings className="w-4 h-4" />
-              </button>
+                  prompts, so it is visible before any scrolling. Kept quiet as a
+                  ghost button so it never competes with the main navigation. */}
+              <DesktopPromo compact ghost />
             </div>
           </div>
         </div>
