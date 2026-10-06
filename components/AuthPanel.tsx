@@ -26,6 +26,10 @@ import {
  *
  * Tokenizer still works fully without an account - compression always runs
  * locally. Signing in only enables cloud sync of history and dashboard stats.
+ *
+ * The signed-in state renders as a single account pill followed by a `children`
+ * slot and a Sign out button, so the caller can keep the header ordered as
+ * account · download · sign out without AuthPanel reaching into the header.
  */
 export function AuthPanel({
   userEmail,
@@ -34,6 +38,7 @@ export function AuthPanel({
   onSignedIn,
   onSignedOut,
   onOpenSettings,
+  children,
 }: {
   userEmail: string | null;
   isSyncing: boolean;
@@ -41,6 +46,7 @@ export function AuthPanel({
   onSignedIn: () => void;
   onSignedOut: () => void;
   onOpenSettings: () => void;
+  children?: React.ReactNode;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [mode, setMode] = useState<"signin" | "signup">("signin");
@@ -106,63 +112,70 @@ export function AuthPanel({
       .slice(0, 2)
       .toUpperCase();
     return (
-      <div className="relative">
-        <button
-          onClick={() => setIsOpen((v) => !v)}
-          className="flex items-center gap-2 px-2 py-1 rounded-full bg-surface-raised border border-slate-800 hover:border-slate-700 transition-colors"
-          aria-label="Account menu"
-          aria-expanded={isOpen}
-        >
-          <span
-            title={userEmail}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-mono bg-cyan-950/60 border border-cyan-800/60 text-cyan-300 max-w-[180px]"
+      <div className="flex items-center gap-2">
+        <div className="relative">
+          <button
+            onClick={() => setIsOpen((v) => !v)}
+            className="flex items-center gap-2 px-2 py-1 rounded-full bg-surface-raised border border-slate-800 hover:border-slate-700 transition-colors"
+            aria-label="Account menu"
+            aria-expanded={isOpen}
           >
-            {isSyncing ? (
-              <Loader2 className="w-3 h-3 animate-spin" />
-            ) : (
-              <Cloud className="w-3 h-3" />
-            )}
-            <span className="truncate">{userEmail}</span>
-          </span>
-          <span className="w-7 h-7 rounded-full bg-gradient-to-br from-cyan-500 to-violet-600 text-white text-[11px] font-bold flex items-center justify-center">
-            {initials}
-          </span>
-          <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
-        </button>
+            <span
+              title={userEmail}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-mono bg-cyan-950/60 border border-cyan-800/60 text-cyan-300 max-w-[180px]"
+            >
+              {isSyncing ? (
+                <Loader2 className="w-3 h-3 animate-spin" />
+              ) : (
+                <Cloud className="w-3 h-3" />
+              )}
+              <span className="truncate">{userEmail}</span>
+            </span>
+            <span className="w-7 h-7 rounded-full bg-gradient-to-br from-cyan-500 to-violet-600 text-white text-[11px] font-bold flex items-center justify-center">
+              {initials}
+            </span>
+            <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+          </button>
 
-        {isOpen && (
-          <div className="absolute right-0 mt-2 w-56 rounded-xl bg-surface border border-slate-800 shadow-xl py-1 z-50">
-            <div className="px-3 py-2 border-b border-slate-800">
-              <p className="text-[10px] uppercase tracking-wider text-slate-500 font-mono">
-                Signed in
-              </p>
-              <p className="text-xs text-slate-300 font-mono truncate" title={userEmail}>
-                {userEmail}
-              </p>
+          {isOpen && (
+            <div className="absolute right-0 mt-2 w-56 rounded-xl bg-surface border border-slate-800 shadow-xl py-1 z-50">
+              <div className="px-3 py-2 border-b border-slate-800">
+                <p className="text-[10px] uppercase tracking-wider text-slate-500 font-mono">
+                  Signed in
+                </p>
+                <p className="text-xs text-slate-300 font-mono truncate" title={userEmail}>
+                  {userEmail}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setIsOpen(false);
+                  onOpenSettings();
+                }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-300 hover:bg-surface-raised transition-colors"
+              >
+                <Settings className="w-3.5 h-3.5 text-slate-400" />
+                Settings
+              </button>
             </div>
-            <button
-              onClick={() => {
-                setIsOpen(false);
-                onOpenSettings();
-              }}
-              className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-300 hover:bg-surface-raised transition-colors"
-            >
-              <Settings className="w-3.5 h-3.5 text-slate-400" />
-              Settings
-            </button>
-            <button
-              onClick={async () => {
-                setIsOpen(false);
-                await signOut();
-                onSignedOut();
-              }}
-              className="w-full flex items-center gap-2 px-3 py-2 text-xs text-rose-300 hover:bg-rose-950/40 transition-colors"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-              Sign out
-            </button>
-          </div>
-        )}
+          )}
+        </div>
+
+        {/* Slot for sibling widgets (e.g. the download pill) that should sit
+            between the account and the Sign out button. */}
+        {children}
+
+        <button
+          onClick={async () => {
+            await signOut();
+            onSignedOut();
+          }}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-mono bg-surface-raised border border-slate-700 text-slate-300 hover:text-rose-300 hover:border-rose-500/50 transition-colors"
+          aria-label="Sign out"
+        >
+          <LogOut className="w-3.5 h-3.5" />
+          Sign out
+        </button>
       </div>
     );
   }

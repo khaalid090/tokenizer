@@ -451,11 +451,14 @@ export default function Home() {
                 onSignedIn={() => void loadHistory()}
                 onSignedOut={() => void loadHistory()}
                 onOpenSettings={() => setIsSettingsOpen(true)}
-              />
-              {/* Desktop installer: top of the page, not buried below the sample
-                  prompts, so it is visible before any scrolling. Kept quiet as a
-                  ghost button so it never competes with the main navigation. */}
-              <DesktopPromo compact ghost />
+              >
+                {/* Desktop installer: top of the page, not buried below the sample
+                    prompts, so it is visible before any scrolling. Kept quiet as a
+                    ghost button so it never competes with the main navigation.
+                    Rendered as AuthPanel's children so the header reads
+                    account · download · sign out. */}
+                <DesktopPromo compact ghost />
+              </AuthPanel>
             </div>
           </div>
         </div>
