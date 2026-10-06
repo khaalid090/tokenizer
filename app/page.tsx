@@ -395,12 +395,6 @@ export default function Home() {
               <div className="flex items-center gap-2">
                 <h1 className="text-lg font-extrabold tracking-tight text-slate-50 flex items-center gap-1.5 font-sans">
                   Tokenizer
-                  <span
-                    title="No cloud, no API keys — compression runs entirely on this machine. Add Supabase keys to enable sync."
-                    className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/25 font-mono tracking-wider cursor-help"
-                  >
-                    Local
-                  </span>
                 </h1>
               </div>
               <p className="text-xs text-slate-300 font-medium">
