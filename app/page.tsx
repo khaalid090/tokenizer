@@ -449,6 +449,9 @@ export default function Home() {
                 onSignedIn={() => void loadHistory()}
                 onSignedOut={() => void loadHistory()}
               />
+              {/* Desktop installer: top of the page, not buried below the sample
+                  prompts, so it is visible before any scrolling. */}
+              <DesktopPromo />
               <button
                 onClick={() => setIsSettingsOpen(true)}
                 className="p-2 rounded-xl bg-surface-raised border border-slate-800 text-slate-300 hover:text-slate-50 hover:border-slate-700 transition-colors"
@@ -571,8 +574,6 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Desktop / web cross-promo (small, non-blocking) */}
-        <DesktopPromo />
       </main>
 
       {/* Footer */}
