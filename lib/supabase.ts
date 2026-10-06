@@ -163,9 +163,74 @@ export async function signIn(
   }
 }
 
+/**
+ * What the Supabase project reports about the Google provider.
+ *
+ *  - "enabled"  -> safe to start the OAuth redirect
+ *  - "disabled" -> the provider is switched off, so the authorize URL answers
+ *                  400 ("Unsupported provider: provider is not enabled"). Because
+ *                  supabase-js kicks the redirect off with window.location.href,
+ *                  the browser would land on that raw JSON page - so we must not
+ *                  navigate at all.
+ *  - "unknown"  -> the probe itself failed (offline, blocked request). We fail
+ *                  OPEN and try the flow anyway: a transient blip must not lock
+ *                  users out of a provider that may well be enabled.
+ */
+type GoogleProviderState = "enabled" | "disabled" | "unknown";
+
+/** Memoised only on a definitive answer, so a failed probe is retried. */
+let googleProviderState: GoogleProviderState | null = null;
+
+const GOOGLE_DISABLED_ERROR =
+  "Google sign-in isn't enabled for this project. Turn it on in Supabase -> " +
+  "Authentication -> Providers, or use another sign-in method.";
+
+/**
+ * Normalises an OAuth failure into something the user can act on.
+ *
+ * When the provider is off, Supabase answers the authorize URL with
+ * `{"code":400,"error_code":"validation_failed","msg":"Unsupported provider:
+ * provider is not enabled"}`. In the browser that response is the *page*, so the
+ * in-app banner may only ever see the tail of it - match loosely on purpose.
+ */
+export function mapGoogleAuthError(rawMessage: string): string {
+  return /provider is not enabled|unsupported provider|error_code.*validation_failed/i.test(
+    rawMessage,
+  )
+    ? GOOGLE_DISABLED_ERROR
+    : rawMessage;
+}
+
+async function getGoogleProviderState(): Promise<GoogleProviderState> {
+  if (googleProviderState) return googleProviderState;
+
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anonKey) return "unknown";
+
+  try {
+    const res = await fetch(`${url}/auth/v1/settings`, {
+      headers: { apikey: anonKey },
+    });
+    if (!res.ok) return "unknown";
+
+    const data = (await res.json()) as { external?: Record<string, boolean> };
+    googleProviderState = data?.external?.google ? "enabled" : "disabled";
+    return googleProviderState;
+  } catch {
+    return "unknown";
+  }
+}
+
 export async function signInWithGoogle(): Promise<AuthResult> {
   const client = getSupabaseClient();
   if (!client) return { success: false, error: "Supabase is not configured." };
+
+  // Pre-flight: check the provider BEFORE handing control to supabase-js,
+  // whose redirect leaves no chance to render a friendly message.
+  if ((await getGoogleProviderState()) === "disabled") {
+    return { success: false, error: GOOGLE_DISABLED_ERROR };
+  }
 
   try {
     const { error } = await client.auth.signInWithOAuth({
@@ -173,7 +238,11 @@ export async function signInWithGoogle(): Promise<AuthResult> {
       options: { redirectTo: window.location.origin },
     });
 
-    if (error) return { success: false, error: error.message };
+    if (error) {
+      // Belt and braces: should the server still reject the provider, surface
+      // the actionable message instead of the raw API text.
+      return { success: false, error: mapGoogleAuthError(error.message) };
+    }
     return { success: true };
   } catch {
     return { success: false, error: "Could not reach Google sign-in. Check your connection." };
