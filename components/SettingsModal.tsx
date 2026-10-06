@@ -2,9 +2,9 @@
 
 import React, { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { X, Layers, DollarSign, Palette, ShieldCheck, Sliders, Lock, Crown, CreditCard } from "lucide-react";
+import { X, Layers, DollarSign, Palette, ShieldCheck, Sliders, Lock, Crown, CreditCard, Clock } from "lucide-react";
 import { AppSettings, CompressionMode, ThemeName } from "@/lib/types";
-import { getLicenseTier, isPro, upgradeToPro, downgradeToFree } from "@/lib/license";
+import { isPro, downgradeToFree, getLicenseHistory } from "@/lib/license";
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -45,12 +45,14 @@ export function SettingsModal({
 }: SettingsModalProps) {
   const [priceText, setPriceText] = useState(String(settings.pricePer1M));
   const [pro, setPro] = useState<boolean>(isPro());
+  const [history, setHistory] = useState(() => getLicenseHistory());
 
-  // Re-sync the price field and license state whenever the modal opens.
+  // Re-sync the price field, license state, and history whenever the modal opens.
   useEffect(() => {
     if (isOpen) {
       setPriceText(String(settings.pricePer1M));
       setPro(isPro());
+      setHistory(getLicenseHistory());
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
@@ -66,11 +68,6 @@ export function SettingsModal({
     else setPriceText(String(settings.pricePer1M));
   };
 
-  const doUpgrade = () => {
-    upgradeToPro();
-    setPro(true);
-  };
-
   const doDowngrade = () => {
     downgradeToFree();
     setPro(false);
@@ -82,7 +79,7 @@ export function SettingsModal({
   // own stacking context and would otherwise trap this overlay behind the page.
   return createPortal(
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-      <div className="relative w-full max-w-lg rounded-2xl bg-surface border border-slate-800 p-6 shadow-2xl space-y-6">
+      <div className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl bg-surface border border-slate-800 p-6 shadow-2xl space-y-6">
         <div className="flex items-center justify-between pb-3 border-b border-slate-800">
           <div className="flex items-center gap-2">
             <Sliders className="w-5 h-5 text-cyan-400" />
@@ -96,8 +93,9 @@ export function SettingsModal({
           </button>
         </div>
 
-        {/* Upgrade card: the only thing that costs money. Placed at the top so
-            the gated mode row below can point back at it. */}
+        {/* Tier card: shows the current license and a downgrade control.
+            The upgrade button is gone — the dev build defaults to unlocked
+            and a real checkout is wired in later. */}
         <div
           className={`rounded-2xl border p-4 ${
             pro
@@ -154,33 +152,49 @@ export function SettingsModal({
             </div>
           </div>
 
-          <div className="mt-3 flex items-center gap-2">
-            {pro ? (
-              <>
-                <button
-                  onClick={doDowngrade}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium bg-surface-raised border border-slate-700 text-slate-300 hover:text-rose-300 hover:border-rose-500/50 transition-colors"
-                >
-                  <CreditCard className="w-3.5 h-3.5" /> Downgrade to free
-                </button>
-                <span className="text-[10px] text-slate-500">
-                  You lose access to Lossy until you re-subscribe.
-                </span>
-              </>
-            ) : (
-              <>
-                <button
-                  onClick={doUpgrade}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-[11px] font-semibold bg-gradient-to-r from-cyan-600 to-violet-600 hover:from-cyan-500 hover:to-violet-500 text-white shadow-md shadow-violet-600/20 transition-all"
-                >
-                  <Crown className="w-3.5 h-3.5" /> Upgrade to Pro
-                </button>
-                <span className="text-[10px] text-slate-500">
-                  One-time local unlock for now — swap for a real checkout later.
-                </span>
-              </>
-            )}
+          <div className="mt-3">
+            <button
+              onClick={doDowngrade}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium bg-surface-raised border border-slate-700 text-slate-300 hover:text-rose-300 hover:border-rose-500/50 transition-colors"
+            >
+              <CreditCard className="w-3.5 h-3.5" /> Downgrade to free
+            </button>
+            <span className="ml-2 text-[10px] text-slate-500">
+              You lose access to Lossy until you re-subscribe.
+            </span>
           </div>
+        </div>
+
+        {/* License history: every upgrade/downgrade with a timestamp. */}
+        <div className="rounded-2xl border border-slate-800 p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Clock className="w-4 h-4 text-slate-400" />
+            <h4 className="text-sm font-semibold text-slate-200">License history</h4>
+          </div>
+          {history.length === 0 ? (
+            <p className="text-[11px] text-slate-500">No changes recorded yet.</p>
+          ) : (
+            <ul className="space-y-2">
+              {history.map((event, i) => (
+                <li
+                  key={i}
+                  className="flex items-center justify-between gap-3 text-[11px]"
+                >
+                  <span className="flex items-center gap-1.5 text-slate-300">
+                    {event.tier === "pro" ? (
+                      <Crown className="w-3.5 h-3.5 text-cyan-400" />
+                    ) : (
+                      <Lock className="w-3.5 h-3.5 text-slate-500" />
+                    )}
+                    {event.label}
+                  </span>
+                  <span className="text-[10px] text-slate-500 font-mono">
+                    {new Date(event.at).toLocaleString()}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
 
         <div className="space-y-5 text-xs">

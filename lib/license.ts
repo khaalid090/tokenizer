@@ -16,7 +16,18 @@
 
 export type LicenseTier = "free" | "pro";
 
+/** A single state-change in the upgrade / downgrade log. */
+export interface LicenseEvent {
+  /** ISO timestamp of when the change happened. */
+  at: string;
+  /** What the tier became after this event. */
+  tier: LicenseTier;
+  /** Human-readable description of what happened. */
+  label: string;
+}
+
 const LICENSE_KEY = "tokentrim_license";
+const HISTORY_KEY = "tokentrim_license_history";
 const FREE_MODES: ReadonlySet<string> = new Set([
   "lossless",
   "balanced",
@@ -41,6 +52,46 @@ let current: LicenseTier = readTier();
 export function getLicenseTier(): LicenseTier {
   return current;
 }
+
+/** Read the upgrade/downgrade history, newest first. */
+export function getLicenseHistory(): LicenseEvent[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(HISTORY_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as LicenseEvent[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Append a state-change to the persistent history log. */
+export function appendLicenseEvent(label: string, tier: LicenseTier): void {
+  if (typeof window === "undefined") return;
+  const event: LicenseEvent = { at: new Date().toISOString(), tier, label };
+  const existing = getLicenseHistory();
+  existing.unshift(event);
+  try {
+    window.localStorage.setItem(HISTORY_KEY, JSON.stringify(existing));
+  } catch {
+    // storage unavailable - history stays in memory only
+  }
+  history = existing;
+}
+
+/** In-memory mirror of the history log (kept in sync with localStorage). */
+export let history: LicenseEvent[] = (() => {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(HISTORY_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as LicenseEvent[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+})();
 
 /** True when the user is paid up, so `lossy` (and any future pro features) is unlocked. */
 export function isPro(): boolean {
@@ -85,6 +136,7 @@ export function upgradeToPro(): void {
     // storage unavailable - flag stays in memory only
   }
   current = "pro";
+  appendLicenseEvent("Upgraded to Tokenizer Pro", "pro");
   window.dispatchEvent(new Event("tokentrim:license"));
 }
 
@@ -97,6 +149,7 @@ export function downgradeToFree(): void {
     // storage unavailable
   }
   current = "free";
+  appendLicenseEvent("Downgraded to Free plan", "free");
   window.dispatchEvent(new Event("tokentrim:license"));
 }
 
