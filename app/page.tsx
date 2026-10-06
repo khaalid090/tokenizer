@@ -68,8 +68,9 @@ export default function Home() {
   // editor and the stats close to the top of the page.
   const [isPipelineExpanded, setIsPipelineExpanded] = useState(false);
 
-  // Prompt state
-  const [originalPrompt, setOriginalPrompt] = useState<string>(SAMPLE_PROMPTS[0].prompt);
+  // Prompt state. Starts empty so the first thing a visitor sees is their own
+  // text, not a demo prompt. The sample chips below still load one on click.
+  const [originalPrompt, setOriginalPrompt] = useState<string>("");
   const [optimizedPrompt, setOptimizedPrompt] = useState<string>("");
   const [mode, setMode] = useState<CompressionMode>("balanced");
   const [lastOptimizeMs, setLastOptimizeMs] = useState<number | undefined>(undefined);
