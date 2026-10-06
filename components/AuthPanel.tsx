@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   LogIn,
@@ -55,6 +55,36 @@ export function AuthPanel({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+
+  // The account dropdown is portalled to <body> (see the signed-in branch) so
+  // the header's backdrop-blur stacking context can't clip it. Its position is
+  // measured from the trigger button, the same way DesktopPromo does it.
+  const [mounted, setMounted] = useState(false);
+  const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => setMounted(true), []);
+
+  useLayoutEffect(() => {
+    if (!isOpen) {
+      setMenuPos(null);
+      return;
+    }
+    const place = () => {
+      const btn = btnRef.current;
+      if (!btn) return;
+      const r = btn.getBoundingClientRect();
+      setMenuPos({ top: r.bottom + 8, right: window.innerWidth - r.right });
+    };
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place);
+    };
+  }, [isOpen]);
 
   const finish = async (result: AuthResult) => {
     if (!result.success) {
@@ -115,6 +145,7 @@ export function AuthPanel({
       <div className="flex items-center gap-2">
         <div className="relative">
           <button
+            ref={btnRef}
             onClick={() => setIsOpen((v) => !v)}
             className="flex items-center gap-2 px-2 py-1 rounded-full bg-surface-raised border border-slate-800 hover:border-slate-700 transition-colors"
             aria-label="Account menu"
@@ -136,9 +167,35 @@ export function AuthPanel({
             </span>
             <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
           </button>
+        </div>
 
-          {isOpen && (
-            <div className="absolute right-0 mt-2 w-56 rounded-xl bg-surface border border-slate-800 shadow-xl py-1 z-50">
+        {/* Slot for sibling widgets (e.g. the download pill) that should sit
+            between the account and the Sign out button. */}
+        {children}
+
+        <button
+          onClick={async () => {
+            await signOut();
+            onSignedOut();
+          }}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-mono bg-surface-raised border border-slate-700 text-slate-300 hover:text-rose-300 hover:border-rose-500/50 transition-colors"
+          aria-label="Sign out"
+        >
+          <LogOut className="w-3.5 h-3.5" />
+          Sign out
+        </button>
+
+        {/* Portalled to <body> so the header's backdrop-blur stacking context
+            can't clip it. Positioned from the trigger button's bounds. */}
+        {isOpen &&
+          mounted &&
+          menuPos &&
+          createPortal(
+            <div
+              ref={menuRef}
+              style={{ top: menuPos.top, right: menuPos.right }}
+              className="fixed w-56 rounded-xl bg-surface border border-slate-800 shadow-2xl py-1 z-[100]"
+            >
               <div className="px-3 py-2 border-b border-slate-800">
                 <p className="text-[10px] uppercase tracking-wider text-slate-500 font-mono">
                   Signed in
@@ -157,25 +214,9 @@ export function AuthPanel({
                 <Settings className="w-3.5 h-3.5 text-slate-400" />
                 Settings
               </button>
-            </div>
+            </div>,
+            document.body
           )}
-        </div>
-
-        {/* Slot for sibling widgets (e.g. the download pill) that should sit
-            between the account and the Sign out button. */}
-        {children}
-
-        <button
-          onClick={async () => {
-            await signOut();
-            onSignedOut();
-          }}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-mono bg-surface-raised border border-slate-700 text-slate-300 hover:text-rose-300 hover:border-rose-500/50 transition-colors"
-          aria-label="Sign out"
-        >
-          <LogOut className="w-3.5 h-3.5" />
-          Sign out
-        </button>
       </div>
     );
   }
