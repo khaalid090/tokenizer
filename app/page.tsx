@@ -58,6 +58,7 @@ import { CutSelector } from "@/components/CutSelector";
 import { AuthGate } from "@/components/AuthGate";
 import { SampleChip } from "@/components/SampleChip";
 import { isTauriRuntime } from "@/lib/platform";
+import { isPro } from "@/lib/license";
 
 type TabId = "workspace" | "diff" | "dashboard";
 
@@ -86,6 +87,12 @@ export default function Home() {
   // Settings (compression default, cost-estimate price, appearance)
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+
+  // License. `lossy` is the only mode that deletes content, so it is gated
+  // behind the paid tier. State lives in lib/license.ts; here we mirror it so
+  // the workspace reacts to upgrades/downgrades without a reload, and we also
+  // listen for the cross-tab `storage` event.
+  const [pro, setPro] = useState<boolean>(isPro());
 
   // History & session stats - SQLite API in the web build, local storage in the desktop build
   const [history, setHistory] = useState<OptimizationResult[]>([]);
@@ -205,6 +212,16 @@ export default function Home() {
       unsubscribe();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Mirror the license flag so the workspace can disable Lossy and react to
+  // upgrades/downgrades without a reload. The flag itself lives in
+  // lib/license.ts and is also broadcast across tabs via a `storage` event.
+  useEffect(() => {
+    setPro(isPro());
+    const onLicense = () => setPro(isPro());
+    window.addEventListener("tokentrim:license", onLicense);
+    return () => window.removeEventListener("tokentrim:license", onLicense);
   }, []);
 
   // Persist one optimization. Everything happens locally first; when signed in
@@ -481,6 +498,8 @@ export default function Home() {
               onOptimize={handleOptimize}
               isOptimizing={isOptimizing}
               tokenizerReady={tokenizerReady}
+              pro={pro}
+              onOpenUpgrade={() => setIsSettingsOpen(true)}
               validationPassed={latestResult?.validationPassed ?? true}
               warning={latestResult?.warning}
               droppedUnits={latestResult?.droppedUnits ?? []}

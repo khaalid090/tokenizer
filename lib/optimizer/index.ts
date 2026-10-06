@@ -1,5 +1,6 @@
 import { CompressionMode, DroppedUnit, OptimizationResult, PipelineStageResult } from "../types";
 import { countTokens, estimateCostUSD, DEFAULT_PRICE_PER_1M } from "../tokens";
+import { canUseMode } from "../license";
 import { extractProtectedSpans, restoreProtectedSpans } from "./protect";
 import { normalize } from "./normalize";
 import { compressPhrases } from "./compress";
@@ -48,6 +49,18 @@ export function optimizePrompt(
   const mode = options.mode || "balanced";
   const pricePer1M = options.pricePer1M ?? DEFAULT_PRICE_PER_1M;
 
+  // License gate. `lossy` is the only mode that deletes content, so it is
+  // reserved for paid users. Free users fall back to `aggressive` (the most
+  // compression the free tier allows) and get a warning saying so, rather than
+  // silently running a destructive pass or throwing mid-pipeline.
+  let gatedNotice: string | undefined;
+  let effectiveMode = mode;
+  if (mode === "lossy" && !canUseMode(mode)) {
+    effectiveMode = "aggressive";
+    gatedNotice =
+      "Lossy is a Pro feature — you ran the most aggressive free mode instead. Upgrade in Settings to delete low-value content.";
+  }
+
   if (!prompt || !prompt.trim()) {
     return {
       originalPrompt: prompt,
@@ -77,11 +90,11 @@ export function optimizePrompt(
   });
 
   // 1. Protect spans
-  const { maskedText, spans } = extractProtectedSpans(prompt, mode);
+  const { maskedText, spans } = extractProtectedSpans(prompt, effectiveMode);
   const resolvedSpans = getFullyResolvedSpans(spans);
 
   // 2. Normalize
-  const normalized = normalize(maskedText, mode);
+  const normalized = normalize(maskedText, effectiveMode);
   const normalizedTokens = countTokens(restoreProtectedSpans(normalized, spans));
   stages.push({
     stage: "normalize",
@@ -97,10 +110,13 @@ export function optimizePrompt(
   // sentences looking alike (and vice versa), so a single pass leaves real
   // savings on the table. Run them to a fixed point, stopping as soon as a pass
   // fails to shrink the text - which also guarantees termination.
-  let compressed = compressPhrases(normalized, mode);
+  let compressed = compressPhrases(normalized, effectiveMode);
   for (let pass = 0; pass < 3; pass++) {
     const before = countTokens(compressed);
-    const next = deduplicate(compressPhrases(compressed, mode), mode);
+    const next = deduplicate(
+      compressPhrases(compressed, effectiveMode),
+      effectiveMode
+    );
     if (countTokens(next) >= before) break;
     compressed = next;
   }
@@ -115,7 +131,7 @@ export function optimizePrompt(
   });
 
   // 4. Restructure
-  const restructured = restructure(deduped, mode);
+  const restructured = restructure(deduped, effectiveMode);
   const restructuredTokens = countTokens(restoreProtectedSpans(restructured, spans));
   stages.push({
     stage: "restructure",
@@ -126,7 +142,7 @@ export function optimizePrompt(
   });
 
   // 5. Output requirement trimming
-  const outputTrimmed = trimOutputRequirements(restructured, mode);
+  const outputTrimmed = trimOutputRequirements(restructured, effectiveMode);
   const outputTrimTokens = countTokens(restoreProtectedSpans(outputTrimmed, spans));
   const outputTrimSavings = Math.max(0, restructuredTokens - outputTrimTokens);
   stages.push({
@@ -143,7 +159,10 @@ export function optimizePrompt(
   //      runs when explicitly requested and always reports what it removed.
   let lossyText = outputTrimmed;
   const droppedUnits: DroppedUnit[] = [];
-  if (mode === "lossy") {
+  // Only run the deletion stage when the *effective* mode is lossy — a free
+  // user who asked for lossy has already been downgraded to aggressive above,
+  // so this block stays skipped and nothing is deleted.
+  if (effectiveMode === "lossy") {
     const targetPercent = options.targetPercent ?? DEFAULT_LOSSY_TARGET_PERCENT;
     const goal = Math.max(0, Math.min(90, targetPercent));
     const targetTokens = Math.ceil(originalTokens * (1 - goal / 100));
@@ -211,6 +230,12 @@ export function optimizePrompt(
     warning =
       warning ??
       "Nothing safe to compress - the original is already the shortest form.";
+  }
+
+  // Surface the license gate notice above any other warning so it is impossible
+  // to miss: a free user asked for lossy and got aggressive instead.
+  if (gatedNotice) {
+    warning = warning ? `${gatedNotice} (${warning})` : gatedNotice;
   }
 
   const finalTokens = countTokens(finalPrompt);

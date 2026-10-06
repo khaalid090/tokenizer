@@ -7,6 +7,17 @@
 >
 > An optional [Supabase](supabase/README.md) account adds cloud sync of your history and dashboard across devices. It is never required for compression.
 
+### Free vs. Pro
+
+| | Free | Pro |
+| --- | --- | --- |
+| Compression modes | `lossless`, `balanced`, `aggressive` | all four, plus `lossy` |
+| `lossy` (deletes content) | locked | included |
+| Cloud sync | via Supabase | via Supabase |
+| Cost | $0 | see Settings → Upgrade |
+
+`lossy` is the only mode that *deletes* text, so it is gated behind the paid tier. Free users who select it fall back to `aggressive` and get a warning pointing at the upgrade card. The license flag lives in `lib/license.ts`; swap `upgradeToPro()` for a real checkout (Stripe / Lemon Squeezer / Paddle) when one lands.
+
 ---
 
 ## Run Modes (one codebase, four commands)

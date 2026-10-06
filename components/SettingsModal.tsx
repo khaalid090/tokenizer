@@ -2,8 +2,9 @@
 
 import React, { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { X, Layers, DollarSign, Palette, ShieldCheck, Sliders } from "lucide-react";
+import { X, Layers, DollarSign, Palette, ShieldCheck, Sliders, Lock, Crown, CreditCard } from "lucide-react";
 import { AppSettings, CompressionMode, ThemeName } from "@/lib/types";
+import { getLicenseTier, isPro, upgradeToPro, downgradeToFree } from "@/lib/license";
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -12,7 +13,7 @@ interface SettingsModalProps {
   onSaveSettings: (settings: AppSettings) => void;
 }
 
-const MODES: { id: CompressionMode; label: string; hint: string }[] = [
+const MODES: { id: CompressionMode; label: string; hint: string; pro?: boolean }[] = [
   { id: "lossless", label: "Lossless", hint: "Whitespace + filler only" },
   { id: "balanced", label: "Balanced", hint: "Dedupe, restructure, trim" },
   { id: "aggressive", label: "Aggressive", hint: "Maximum compression" },
@@ -20,6 +21,7 @@ const MODES: { id: CompressionMode; label: string; hint: string }[] = [
     id: "lossy",
     label: "Lossy",
     hint: "Deletes low-value sentences to hit a target",
+    pro: true,
   },
 ];
 
@@ -42,10 +44,14 @@ export function SettingsModal({
   onSaveSettings,
 }: SettingsModalProps) {
   const [priceText, setPriceText] = useState(String(settings.pricePer1M));
+  const [pro, setPro] = useState<boolean>(isPro());
 
-  // Re-sync the price field whenever the modal opens.
+  // Re-sync the price field and license state whenever the modal opens.
   useEffect(() => {
-    if (isOpen) setPriceText(String(settings.pricePer1M));
+    if (isOpen) {
+      setPriceText(String(settings.pricePer1M));
+      setPro(isPro());
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
@@ -58,6 +64,16 @@ export function SettingsModal({
     const parsed = parseFloat(raw);
     if (Number.isFinite(parsed) && parsed >= 0) update("pricePer1M", parsed);
     else setPriceText(String(settings.pricePer1M));
+  };
+
+  const doUpgrade = () => {
+    upgradeToPro();
+    setPro(true);
+  };
+
+  const doDowngrade = () => {
+    downgradeToFree();
+    setPro(false);
   };
 
   if (typeof document === "undefined") return null;
@@ -80,6 +96,93 @@ export function SettingsModal({
           </button>
         </div>
 
+        {/* Upgrade card: the only thing that costs money. Placed at the top so
+            the gated mode row below can point back at it. */}
+        <div
+          className={`rounded-2xl border p-4 ${
+            pro
+              ? "bg-gradient-to-br from-cyan-950/60 to-violet-950/40 border-cyan-700/60"
+              : "bg-surface-raised/60 border-slate-800"
+          }`}
+        >
+          <div className="flex items-start gap-3">
+            <div
+              className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                pro ? "bg-gradient-to-br from-cyan-500 to-violet-600" : "bg-slate-800"
+              }`}
+            >
+              {pro ? (
+                <Crown className="w-5 h-5 text-white" />
+              ) : (
+                <Lock className="w-5 h-5 text-slate-400" />
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <h4 className="text-sm font-semibold text-slate-50">
+                  {pro ? "Tokenizer Pro" : "Free plan"}
+                </h4>
+                <span
+                  className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded font-mono tracking-wider ${
+                    pro
+                      ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/30"
+                      : "bg-slate-800 text-slate-400 border border-slate-700"
+                  }`}
+                >
+                  {pro ? "active" : "free"}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                {pro
+                  ? "Lossy mode and every future pro feature are unlocked."
+                  : "Lossless, balanced and aggressive are yours forever. Lossy deletes content, so it is gated behind Pro."}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-3 space-y-2 text-[11px]">
+            <div className="flex items-center gap-1.5 text-slate-400">
+              <Layers className="w-3.5 h-3.5 text-cyan-400" /> 3 free compression modes
+            </div>
+            <div className="flex items-center gap-1.5 text-slate-400">
+              {pro ? (
+                <Crown className="w-3.5 h-3.5 text-cyan-400" />
+              ) : (
+                <Lock className="w-3.5 h-3.5 text-slate-500" />
+              )}{" "}
+              Lossy deletion mode
+            </div>
+          </div>
+
+          <div className="mt-3 flex items-center gap-2">
+            {pro ? (
+              <>
+                <button
+                  onClick={doDowngrade}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium bg-surface-raised border border-slate-700 text-slate-300 hover:text-rose-300 hover:border-rose-500/50 transition-colors"
+                >
+                  <CreditCard className="w-3.5 h-3.5" /> Downgrade to free
+                </button>
+                <span className="text-[10px] text-slate-500">
+                  You lose access to Lossy until you re-subscribe.
+                </span>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={doUpgrade}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-[11px] font-semibold bg-gradient-to-r from-cyan-600 to-violet-600 hover:from-cyan-500 hover:to-violet-500 text-white shadow-md shadow-violet-600/20 transition-all"
+                >
+                  <Crown className="w-3.5 h-3.5" /> Upgrade to Pro
+                </button>
+                <span className="text-[10px] text-slate-500">
+                  One-time local unlock for now — swap for a real checkout later.
+                </span>
+              </>
+            )}
+          </div>
+        </div>
+
         <div className="space-y-5 text-xs">
           {/* Privacy note */}
           <div className="flex items-start gap-2.5 p-3 rounded-xl bg-violet-950/40 border border-violet-800/40 text-violet-200">
@@ -97,26 +200,46 @@ export function SettingsModal({
               <Layers className="w-3.5 h-3.5 text-slate-400" /> Default compression mode
             </label>
             <div className="grid grid-cols-3 gap-2">
-              {MODES.map((m) => (
-                <button
-                  key={m.id}
-                  onClick={() => update("mode", m.id)}
-                  className={`rounded-xl border p-3 text-left transition-all ${
-                    settings.mode === m.id
-                      ? "border-cyan-500/60 bg-cyan-950/40 shadow-[0_0_15px_rgba(6,182,212,0.15)]"
-                      : "border-slate-800 bg-surface-raised hover:border-slate-700"
-                  }`}
-                >
-                  <div
-                    className={`text-xs font-semibold ${
-                      settings.mode === m.id ? "text-cyan-300" : "text-slate-300"
+              {MODES.map((m) => {
+                const locked = m.pro && !pro;
+                return (
+                  <button
+                    key={m.id}
+                    disabled={locked}
+                    onClick={() => update("mode", m.id)}
+                    title={
+                      locked
+                        ? "Upgrade to Pro to enable Lossy"
+                        : undefined
+                    }
+                    className={`rounded-xl border p-3 text-left transition-all ${
+                      settings.mode === m.id
+                        ? "border-cyan-500/60 bg-cyan-950/40 shadow-[0_0_15px_rgba(6,182,212,0.15)]"
+                        : locked
+                        ? "border-slate-800 bg-slate-900/40 cursor-not-allowed opacity-60"
+                        : "border-slate-800 bg-surface-raised hover:border-slate-700"
                     }`}
                   >
-                    {m.label}
-                  </div>
-                  <div className="text-[10px] text-slate-500 mt-1">{m.hint}</div>
-                </button>
-              ))}
+                    <div className="flex items-center justify-between gap-1">
+                      <div
+                        className={`text-xs font-semibold ${
+                          settings.mode === m.id ? "text-cyan-300" : "text-slate-300"
+                        }`}
+                      >
+                        {m.label}
+                      </div>
+                      {m.pro ? (
+                        locked ? (
+                          <Lock className="w-3 h-3 text-slate-500 flex-shrink-0" />
+                        ) : (
+                          <Crown className="w-3 h-3 text-cyan-400 flex-shrink-0" />
+                        )
+                      ) : null}
+                    </div>
+                    <div className="text-[10px] text-slate-500 mt-1">{m.hint}</div>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
