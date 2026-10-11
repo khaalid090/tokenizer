@@ -105,7 +105,10 @@ type JwksKey = JsonWebKey & { kid?: string };
 type LocalVerifyResult = { userId: string } | "invalid" | null;
 
 let jwksCache: { keys: JwksKey[]; fetchedAt: number } | null = null;
-const JWKS_TTL_MS = 10 * 60_000;
+// 1h: Supabase signing keys rotate rarely, and a kid miss still forces a
+// rate-limited refresh below, so a long TTL just removes a periodic network
+// stall from the first History click after idle.
+const JWKS_TTL_MS = 60 * 60_000;
 const JWKS_MIN_REFRESH_MS = 60_000; // rate-limit forced refreshes (kid-miss)
 
 async function getJwks(url: string, force: boolean): Promise<JwksKey[]> {
