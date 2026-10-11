@@ -17,6 +17,9 @@ const isDesktopBuild = process.env.TAURI_BUILD === "1";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  // Hide the floating Next.js "N" dev-tools badge that overlays the UI in
+  // `next dev` (dev-mode only; it never ships to production builds).
+  devIndicators: false,
   // Next otherwise infers the workspace root from any lockfile it finds in a
   // parent folder, which breaks build tracing (ENOENT on .nft.json files).
   outputFileTracingRoot: path.join(__dirname),
