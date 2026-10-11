@@ -46,6 +46,83 @@ let cachedClient: SupabaseClient | null = null;
 let cachedUrl = "";
 let cachedKey = "";
 
+// ---------------------------------------------------------------------------
+// Auth cookie mirror
+//
+// supabase-js persists the session in localStorage by default, but Next.js
+// middleware and the /admin server layout run on the server and can only read
+// cookies. After every sign-in / token refresh we therefore also mirror a
+// compact `{ "access_token": "..." }` JSON into the `sb-<project-ref>-auth-token`
+// cookie (URL-encoded so JSON quotes are cookie-safe, ~1.5 KB - well under the
+// 4 KB per-cookie limit). lib/server-auth.ts decodes it server-side.
+// ---------------------------------------------------------------------------
+
+function authCookieName(url: string): string {
+  return `sb-${new URL(url).hostname.split(".")[0]}-auth-token`;
+}
+
+function writeAuthCookie(url: string, sessionJson: string | null): void {
+  if (typeof document === "undefined") return;
+  const name = authCookieName(url);
+  if (!sessionJson) {
+    document.cookie = `${name}=; Path=/; Max-Age=0; SameSite=Lax`;
+    return;
+  }
+  let token = "";
+  try {
+    const parsed = JSON.parse(sessionJson);
+    if (parsed && typeof parsed.access_token === "string") {
+      token = parsed.access_token;
+    }
+  } catch {
+    // ignore malformed values
+  }
+  if (!token) {
+    document.cookie = `${name}=; Path=/; Max-Age=0; SameSite=Lax`;
+    return;
+  }
+  const value = encodeURIComponent(JSON.stringify({ access_token: token }));
+  // 30 days; the client refreshes the token (and this cookie) automatically.
+  document.cookie = `${name}=${value}; Path=/; Max-Age=2592000; SameSite=Lax`;
+}
+
+/**
+ * Pushes whatever session currently lives in localStorage into the auth cookie.
+ * Called once when the client is created so a user who signed in BEFORE this
+ * mirror existed still gets a valid cookie on their next page load.
+ */
+function syncAuthCookie(url: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    writeAuthCookie(url, window.localStorage.getItem(authCookieName(url)));
+  } catch {
+    // ignore (storage disabled)
+  }
+}
+
+/**
+ * localStorage-compatible adapter that mirrors `sb-<ref>-auth-token` writes
+ * into the auth cookie. All other keys pass straight through to localStorage.
+ */
+function createMirroredStorage(url: string): Storage {
+  return {
+    getItem: (key: string) => window.localStorage.getItem(key),
+    setItem: (key: string, value: string) => {
+      window.localStorage.setItem(key, value);
+      if (key === authCookieName(url)) writeAuthCookie(url, value);
+    },
+    removeItem: (key: string) => {
+      window.localStorage.removeItem(key);
+      if (key === authCookieName(url)) writeAuthCookie(url, null);
+    },
+    clear: () => window.localStorage.clear(),
+    key: (index: number) => window.localStorage.key(index),
+    get length() {
+      return window.localStorage.length;
+    },
+  };
+}
+
 /**
  * Creates (and memoizes) the browser Supabase client.
  * Returns null when the env vars are missing so the app can degrade to local
@@ -65,12 +142,17 @@ export function getSupabaseClient(): SupabaseClient | null {
       persistSession: true,
       autoRefreshToken: true,
       detectSessionInUrl: true,
+      storage: createMirroredStorage(url),
     },
   });
   cachedUrl = url;
   cachedKey = anonKey;
+  // Existing sessions (signed in before the mirror existed) live only in
+  // localStorage - copy them into the cookie so server middleware can see them.
+  syncAuthCookie(url);
   return cachedClient;
 }
+
 
 /** True when Supabase env vars are configured in this build. */
 export function isSupabaseConfigured(): boolean {
@@ -112,8 +194,6 @@ export async function getCurrentUser(): Promise<User | null> {
 export interface AuthResult {
   success: boolean;
   error?: string;
-  /** True when the account exists but email confirmation is still pending. */
-  needsEmailConfirmation?: boolean;
 }
 
 export async function signUp(
@@ -123,21 +203,47 @@ export async function signUp(
   const client = getSupabaseClient();
   if (!client) return { success: false, error: "Supabase is not configured." };
 
-  // supabase-js resolves with `{ error }` for auth failures, but *throws* on
-  // transport-level problems (offline, DNS, blocked request, bad URL). Every
-  // other helper in this file swallows those; these must too, otherwise the
-  // rejection escapes into the caller's event handler.
+  // Preferred path: the server-side /api/auth/signup route creates the
+  // account ALREADY CONFIRMED (service-role admin API), so there is no
+  // "check your inbox" confirmation step at all. After the account exists we
+  // sign in with the same password to establish the session the caller
+  // expects. If the route is unavailable (Tauri static export / no service
+  // key -> 503, missing route -> 404, network failure -> catch), fall back to
+  // the public client-side signUp below, which is subject to the project's
+  // "Confirm email" setting.
   try {
-    const { data, error } = await client.auth.signUp({
+    const res = await fetch("/api/auth/signup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: email.trim(), password }),
+    });
+
+    if (res.ok) {
+      const signedIn = await signIn(email, password);
+      if (!signedIn.success) return signedIn;
+      return { success: true };
+    }
+
+    if (res.status !== 404 && res.status !== 503) {
+      const data = (await res.json().catch(() => null)) as {
+        error?: string;
+      } | null;
+      return {
+        success: false,
+        error: data?.error || "Could not create the account.",
+      };
+    }
+  } catch {
+    // Could not reach our own origin - fall through to the public path.
+  }
+
+  try {
+    const { error } = await client.auth.signUp({
       email: email.trim(),
       password,
     });
-
     if (error) return { success: false, error: error.message };
-
-    // With "Confirm email" enabled in the Supabase dashboard, signUp returns a
-    // user but no session until the confirmation link is clicked.
-    return { success: true, needsEmailConfirmation: !data.session };
+    return { success: true };
   } catch {
     return { success: false, error: "Could not reach the sign-in service. Check your connection." };
   }
@@ -460,4 +566,173 @@ export async function clearSupabaseHistory(): Promise<SessionStats | null> {
   } catch {
     return null;
   }
+}
+export function createServiceClient(): SupabaseClient | null {
+  if (typeof process !== "undefined" && process.env && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!url || !key) return null;
+    return createClient(url, key, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+  }
+  return null;
+}
+export interface AdminProfile {
+  id: string;
+  email: string | null;
+  is_admin: boolean;
+  banned: boolean;
+  store_previews: boolean;
+  total_optimizations: number;
+  total_tokens_saved: number;
+  total_cost_saved_usd: number;
+  last_active_at: string | null;
+  created_at: string;
+}
+
+export interface BenchmarkPromptRow {
+  id: string;
+  label: string;
+  sample_prompt: string;
+  savings_range_label: string;
+  sort_order: number;
+  is_active: boolean;
+}
+
+export interface PlatformSettingsRow {
+  id: number;
+  default_compression_mode: string;
+  default_price_per_1m: number;
+  maintenance_mode: boolean;
+  maintenance_message: string | null;
+  updated_at: string;
+  updated_by: string | null;
+}
+
+export interface AuditLogRow {
+  id: number;
+  admin_user_id: string;
+  action: string;
+  target_user_id: string | null;
+  details: Record<string, unknown>;
+  created_at: string;
+}
+
+const PROFILE_COLUMNS =
+  "id,email,is_admin,banned,store_previews,total_optimizations,total_tokens_saved,total_cost_saved_usd,last_active_at,created_at";
+
+const BENCHMARK_COLUMNS =
+  "id,label,sample_prompt,savings_range_label,sort_order,is_active";
+
+const SETTINGS_COLUMNS =
+  "id,default_compression_mode,default_price_per_1m,maintenance_mode,maintenance_message,updated_at,updated_by";
+
+const AUDIT_COLUMNS =
+  "id,admin_user_id,action,target_user_id,details,created_at";
+
+/** Fetch the caller's own profile (RLS-scoped). Returns null if none. */
+export async function fetchOwnProfile(
+  userId: string
+): Promise<AdminProfile | null> {
+  const client = getSupabaseClient();
+  if (!client) return null;
+  try {
+    const { data, error } = await client
+      .from("profiles")
+      .select(PROFILE_COLUMNS)
+      .eq("id", userId)
+      .maybeSingle();
+    if (error || !data) return null;
+    return rowToProfile(data as Record<string, unknown>);
+  } catch {
+    return null;
+  }
+}
+
+function rowToProfile(row: Record<string, unknown>): AdminProfile {
+  const num = (k: string): number => {
+    const v = Number(row[k] ?? 0);
+    return Number.isFinite(v) ? v : 0;
+  };
+  return {
+    id: String(row.id ?? ""),
+    email: typeof row.email === "string" ? row.email : null,
+    is_admin: row.is_admin === true,
+    banned: row.banned === true,
+    store_previews: row.store_previews === true,
+    total_optimizations: num("total_optimizations"),
+    total_tokens_saved: num("total_tokens_saved"),
+    total_cost_saved_usd: num("total_cost_saved_usd"),
+    last_active_at: typeof row.last_active_at === "string" ? row.last_active_at : null,
+    created_at: typeof row.created_at === "string" ? row.created_at : new Date().toISOString(),
+  };
+}
+
+/** Fetch active benchmark prompts ordered by sort_order (public read). */
+export async function fetchActiveBenchmarkPrompts(): Promise<BenchmarkPromptRow[]> {
+  const client = getSupabaseClient();
+  if (!client) return [];
+  try {
+    const { data, error } = await client
+      .from("benchmark_prompts")
+      .select(BENCHMARK_COLUMNS)
+      .eq("is_active", true)
+      .order("sort_order", { ascending: true });
+    if (error || !data) return [];
+    return (data as Record<string, unknown>[]).map(rowToBenchmark);
+  } catch {
+    return [];
+  }
+}
+
+function rowToBenchmark(row: Record<string, unknown>): BenchmarkPromptRow {
+  return {
+    id: String(row.id ?? ""),
+    label: String(row.label ?? ""),
+    sample_prompt: String(row.sample_prompt ?? ""),
+    savings_range_label: String(row.savings_range_label ?? ""),
+    sort_order: Number(row.sort_order ?? 0),
+    is_active: row.is_active === true,
+  };
+}
+
+/** Fetch the platform_settings singleton (public read). */
+export async function fetchPlatformSettings(): Promise<PlatformSettingsRow | null> {
+  const client = getSupabaseClient();
+  if (!client) return null;
+  try {
+    const { data, error } = await client
+      .from("platform_settings")
+      .select(SETTINGS_COLUMNS)
+      .eq("id", 1)
+      .maybeSingle();
+    if (error || !data) return null;
+    return rowToSettings(data as Record<string, unknown>);
+  } catch {
+    return null;
+  }
+}
+
+function rowToSettings(row: Record<string, unknown>): PlatformSettingsRow {
+  return {
+    id: Number(row.id ?? 1),
+    default_compression_mode: String(row.default_compression_mode ?? "balanced"),
+    default_price_per_1m: Number(row.default_price_per_1m ?? 2.5),
+    maintenance_mode: row.maintenance_mode === true,
+    maintenance_message: typeof row.maintenance_message === "string" ? row.maintenance_message : null,
+    updated_at: typeof row.updated_at === "string" ? row.updated_at : new Date().toISOString(),
+    updated_by: typeof row.updated_by === "string" ? row.updated_by : null,
+  };
+}
+
+/** Record the caller's last_active_at timestamp. Fire-and-forget; never blocks. */
+export function touchProfile(userId: string): void {
+  const client = getSupabaseClient();
+  if (!client) return;
+  client
+    .from("profiles")
+    .update({ last_active_at: new Date().toISOString() })
+    .eq("id", userId)
+    .then(() => undefined, () => undefined); // PromiseLike: no .catch()
 }

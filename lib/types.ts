@@ -81,6 +81,8 @@ export interface DroppedUnit {
 }
 
 export interface OptimizationResult {
+  /** Stable autoincrement row id when the result is persisted (null when only in memory). */
+  id?: number;
   originalPrompt: string;
   optimizedPrompt: string;
   mode: CompressionMode;
@@ -123,4 +125,17 @@ export interface SessionStats {
   totalTokensOptimized: number;
   averageCompressionRatio: number;
   optimizationsCount: number;
+}
+
+/** Snapshot of an empty stats row, used wherever a stats object is required
+ * but no data is available yet (e.g. SSR of pages that fetch stats server-side). */
+export function emptyStats(): SessionStats {
+  return {
+    totalTokensSaved: 0,
+    totalCostSavedUSD: 0,
+    totalTokensOriginal: 0,
+    totalTokensOptimized: 0,
+    averageCompressionRatio: 0,
+    optimizationsCount: 0,
+  };
 }

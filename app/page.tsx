@@ -1,7 +1,9 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import {
+  History,
   SplitSquareVertical,
   Layers,
   BarChart3,
@@ -453,6 +455,16 @@ export default function Home() {
                 );
               })}
             </div>
+
+            <nav className="hidden sm:flex items-center gap-1">
+              <Link
+                href="/history"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-slate-100 hover:bg-surface-raised transition-all"
+              >
+                <History className="w-3.5 h-3.5" />
+                History
+              </Link>
+            </nav>
 
             <div className="flex items-center gap-2">
               <AuthPanel

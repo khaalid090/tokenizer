@@ -12,14 +12,7 @@ import {
   ChevronDown,
   Settings,
 } from "lucide-react";
-import {
-  AuthResult,
-  isSupabaseConfigured,
-  signIn,
-  signInWithGoogle,
-  signOut,
-  signUp,
-} from "@/lib/supabase";
+import { AuthResult, isSupabaseConfigured, signIn, signInWithGoogle, signOut, signUp } from "@/lib/supabase";
 
 /**
  * Account panel for the Supabase-backed Dashboard.
@@ -91,14 +84,9 @@ export function AuthPanel({
       setError(result.error || "Something went wrong.");
       return;
     }
-    if (result.needsEmailConfirmation) {
-      setNotice("Check your inbox to confirm your email, then sign in.");
-      setMode("signin");
-    } else {
-      setIsOpen(false);
-      setPassword("");
-      onSignedIn();
-    }
+    setIsOpen(false);
+    setPassword("");
+    onSignedIn();
   };
 
   const handleSubmit = async (e: React.FormEvent) => {

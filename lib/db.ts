@@ -249,6 +249,59 @@ export function saveOptimizationToDb(
   }
 }
 
+/** Deletes a single optimization row by id, scoped to the caller's user_id. */
+export function deleteOptimizationFromDb(id: string, userId: string): void {
+  const db = getDb();
+  db.prepare(
+    "DELETE FROM optimizations WHERE id = ? AND user_id = ?"
+  ).run(id, userId);
+  // Recalculate the user's aggregate stats after deletion.
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    db.prepare(`
+      UPDATE stats SET
+        total_tokens_saved   = COALESCE(
+          (SELECT SUM(tokens_saved) FROM optimizations WHERE user_id = ?),
+          0),
+        total_cost_saved_usd = COALESCE(
+          (SELECT SUM(cost_saved_usd) FROM optimizations WHERE user_id = ?),
+          0),
+        total_tokens_original = COALESCE(
+          (SELECT SUM(original_tokens) FROM optimizations WHERE user_id = ?),
+          0),
+        total_tokens_optimized = COALESCE(
+          (SELECT SUM(optimized_tokens) FROM optimizations WHERE user_id = ?),
+          0),
+        average_compression_ratio = CASE
+          WHEN total_tokens_original > 0
+            THEN ROUND(CAST(total_tokens_saved AS REAL) * 100 / total_tokens_original, 1)
+          ELSE 0
+        END,
+        optimizations_count  = COALESCE(
+          (SELECT COUNT(*) FROM optimizations WHERE user_id = ?),
+          0),
+        updated_at           = ?
+      WHERE user_id = ?
+    `).run(
+      userId,
+      userId,
+      userId,
+      userId,
+      userId,
+      Date.now(),
+      userId
+    );
+    db.exec("COMMIT");
+  } catch (err) {
+    try {
+      db.exec("ROLLBACK");
+    } catch {
+      // Already rolled back; surface the original failure.
+    }
+    throw err;
+  }
+}
+
 /** Clamps the caller-supplied limit so a huge or malformed value can't hurt. */
 function safeLimit(limit: number): number {
   if (!Number.isFinite(limit)) return 50;
@@ -258,7 +311,7 @@ function safeLimit(limit: number): number {
 export function getOptimizationsFromDb(
   userId: string,
   limit: number = 50
-): StoredOptimization[] {
+): OptimizationResult[] {
   const db = getDb();
   // Scoped by user_id - a caller can only ever read their own rows.
   const rows = db

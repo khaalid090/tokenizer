@@ -11,13 +11,7 @@ import {
   Scissors,
   ShieldCheck,
 } from "lucide-react";
-import {
-  AuthResult,
-  sendPasswordReset,
-  signIn,
-  signInWithGoogle,
-  signUp,
-} from "@/lib/supabase";
+import { AuthResult, sendPasswordReset, signIn, signInWithGoogle, signUp } from "@/lib/supabase";
 
 /** Google "G" mark, inlined so the gate needs no extra asset request. */
 function GoogleMark() {
@@ -96,24 +90,8 @@ const handleSubmit = async (e: React.FormEvent) => {
         return;
       }
 
-      // Some Supabase projects return no session after signUp ("Confirm email"
-      // is on), even though the account is perfectly usable. Try to sign in
-      // straight away so a user with autoconfirm enabled never has to leave the
-      // form - and so the common case is "type email, press enter, you're in".
-      if (result.needsEmailConfirmation) {
-        const retry = await signIn(email, password);
-        if (retry.success) {
-          onSignedIn();
-          return;
-        }
-        setNotice(
-          "Account created, but this Supabase project still requires email confirmation. " +
-            "Turn OFF \"Confirm email\" in Supabase → Authentication → Sign In / Providers to sign in instantly."
-        );
-        setMode("signin");
-        return;
-      }
-
+      // Accounts are auto-confirmed at sign-up, so sign-in returns a session
+      // immediately - no confirmation email, no extra round-trip.
       onSignedIn();
     } catch (err) {
       // The lib helpers already turn transport failures into an AuthResult, so

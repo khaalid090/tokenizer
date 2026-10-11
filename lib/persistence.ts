@@ -88,6 +88,45 @@ export function loadLocalStats(): SessionStats | null {
   }
 }
 
+/** Warm-cache storage for the history list. Written by the workspace/dashboard
+ *  pages right after `loadHistory()` succeeds, read by the History page as a
+ *  stale-while-revalidate cache: the list is available for an instant render
+ *  from the browser's own memory, while a background fetch refreshes it.
+ *  The JSON is tiny and mirrors the cookie-less in-memory session. */
+export function saveHistoryToSessionStorage(
+  history: OptimizationResult[],
+  stats: SessionStats
+): void {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.setItem(
+      "tokentrim_history",
+      JSON.stringify({ history, stats })
+    );
+  } catch {
+    // Storage full/blocked - the live list still works, the cache just misses.
+  }
+}
+
+export function loadHistoryFromSessionStorage(): {
+  history: OptimizationResult[];
+  stats: SessionStats;
+} | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem("tokentrim_history");
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || !Array.isArray(parsed.history) || !parsed.stats) return null;
+    return {
+      history: parsed.history as OptimizationResult[],
+      stats: { ...emptyStats(), ...parsed.stats },
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function saveLocalRecord(result: OptimizationResult, stats: SessionStats): void {
   if (typeof window === "undefined") return;
   try {

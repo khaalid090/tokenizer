@@ -12,6 +12,9 @@
 --     aggregate, so they can never drift out of sync with the rows.
 --   * Row Level Security is enabled and every policy is scoped to
 --     `auth.uid() = user_id`, so a user can only ever read/write their own rows.
+--   * `system_audit_log` records every operation on the system-side history
+--     API (`/api/history`). Read-only via the service_role key (no client can
+--     modify or read it) so the log itself cannot be tampered with.
 -- ============================================================================
 
 create table if not exists public.optimizations (
@@ -42,6 +45,33 @@ create table if not exists public.optimizations (
 -- History list: newest first for the current user.
 create index if not exists optimizations_user_created_idx
   on public.optimizations (user_id, created_at desc);
+
+-- ---------------------------------------------------------------------------
+-- System audit log
+--
+-- Records every operation on the system-side history API (`/api/history`):
+-- reads (GET), saves (POST) and clears (DELETE). One row per API call, keyed
+-- to the authenticated user, with a JSONB payload of context (limit, counts,
+-- errors). The table is never written from the client and has zero read
+-- policies, so only code holding the service_role key can access it - the
+-- log cannot be tampered with or viewed by a normal user.
+-- ---------------------------------------------------------------------------
+create table if not exists public.system_audit_log (
+  id            bigint generated always as identity primary key,
+  user_id       uuid references auth.users (id) on delete cascade,
+  action        text        not null,   -- 'history_read' | 'history_save' | 'history_delete'
+  status        text        not null,   -- 'ok' | 'error'
+  details       jsonb       not null default '{}'::jsonb,
+  created_at    timestamptz not null default now()
+);
+
+create index if not exists system_audit_log_user_created_idx
+  on public.system_audit_log (user_id, created_at desc);
+
+alter table public.system_audit_log enable row level security;
+
+-- No read/write policies: the table is service_role-only. RLS is enabled but
+-- with zero policies the anon and authenticated roles cannot touch it at all.
 
 -- ---------------------------------------------------------------------------
 -- Row Level Security
@@ -121,3 +151,7 @@ comment on table public.optimizations is
   'TokenTrim optimization history. Compressed locally; synced here only when a user saves it.';
 comment on column public.optimizations.stages is
   'Per-stage pipeline visualizer data (token counts before/after each stage).';
+comment on table public.system_audit_log is
+  'System-side API audit log. One row per /api/history call; service_role-only, unmodifiable by clients.';
+comment on column public.system_audit_log.details is
+  'Context JSON: { limit, count, error } depending on the action.';
