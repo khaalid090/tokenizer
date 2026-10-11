@@ -27,3 +27,6 @@ dev.err
 build-all-done.txt
 .DS_Store
 Thumbs.db
+
+tokenizer/
+pnpm-install.err
