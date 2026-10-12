@@ -4,17 +4,15 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { History, Layers } from "lucide-react";
 import { HistoryList } from "@/components/HistoryList";
+import type { OptimizationResult, SessionStats } from "@/lib/types";
 import { emptyStats } from "@/lib/types";
-import { getOptimizationsFromDb, getStatsFromDb } from "@/lib/db";
+import { fetchHistoryWithBearer } from "@/lib/server-history";
 import {
   extractBearerFromCookie,
   verifyBearerFast,
   authCookieName,
 } from "@/lib/server-auth";
 import { deleteHistoryItem } from "./actions";
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 export const metadata: Metadata = {
   title: "History - Tokenizer",
@@ -24,32 +22,55 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function HistoryPage() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
+
+  // Cloud history requires Supabase. Missing env used to crash with
+  // `new URL(undefined)` inside authCookieName (digest-only error in prod).
+  if (!supabaseUrl || !supabaseAnonKey) {
+    redirect("/");
+  }
+
   const cookieStore = await cookies();
-  const bearer = extractBearerFromCookie(
-    cookieStore.get(authCookieName(SUPABASE_URL))?.value
-  );
+  let bearer = "";
+  try {
+    bearer = extractBearerFromCookie(
+      cookieStore.get(authCookieName(supabaseUrl))?.value
+    );
+  } catch {
+    redirect("/");
+  }
 
   if (!bearer) {
     redirect("/");
   }
 
-  // Local-first verification: the ES256 signature and claims are checked
-  // against Supabase's JWKS right here on the server (~1ms) instead of making
-  // a blocking round trip to /auth/v1/user (measured at 2-3s, and the reason
-  // this page used to hang on every click). verifyBearerFast falls back to the
-  // remote check automatically whenever it cannot vouch for the token, so a
-  // forged/expired/foreign-project token is still rejected authoritatively.
-  const userId = await verifyBearerFast(SUPABASE_URL, SUPABASE_ANON_KEY, bearer);
+  // Local-first JWT check (~1ms); falls back to /auth/v1/user when needed.
+  const userId = await verifyBearerFast(
+    supabaseUrl,
+    supabaseAnonKey,
+    bearer
+  );
   if (!userId) {
     redirect("/");
   }
 
-  // Read SQLite directly instead of HTTP-fetching our own /api/history route.
-  // The self-fetch used to cost a localhost hop, a SECOND Supabase JWT
-  // verification inside the route, and an awaited audit write - three serial
-  // network round trips that dominated the page load time.
-  const history = getOptimizationsFromDb(userId, 100);
-  const stats = { ...emptyStats(), ...getStatsFromDb(userId) };
+  // Read from Supabase with the caller's JWT (RLS). SQLite is not available
+  // on Vercel serverless and was the wrong store for signed-in cloud users.
+  let history: OptimizationResult[] = [];
+  let stats: SessionStats = emptyStats();
+  try {
+    const payload = await fetchHistoryWithBearer(
+      supabaseUrl,
+      supabaseAnonKey,
+      bearer,
+      100
+    );
+    history = payload.history;
+    stats = payload.stats;
+  } catch (err) {
+    console.error("Failed to load history from Supabase:", err);
+  }
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col relative overflow-hidden selection:bg-cyan-500/30 selection:text-cyan-200">
@@ -119,4 +140,3 @@ export default async function HistoryPage() {
     </div>
   );
 }
-

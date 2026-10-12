@@ -435,6 +435,7 @@ export function onAuthStateChange(
 
 function rowToResult(row: OptimizationRow): OptimizationResult {
   return {
+    id: row.id,
     originalPrompt: row.original_prompt,
     optimizedPrompt: row.optimized_prompt,
     mode: row.mode as OptimizationResult["mode"],

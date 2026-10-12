@@ -12,7 +12,18 @@
 
 /** Cookie name Supabase uses for this project (`sb-<project-ref>-auth-token`). */
 export function authCookieName(url: string): string {
-  return `sb-${new URL(url).hostname.split(".")[0]}-auth-token`;
+  // Guard missing/invalid env so Server Components never throw Invalid URL
+  // (production omits the message and only shows a digest).
+  if (!url || typeof url !== "string") {
+    throw new Error("Supabase URL is not configured");
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error("Supabase URL is invalid");
+  }
+  return `sb-${parsed.hostname.split(".")[0]}-auth-token`;
 }
 
 function safeDecode(value: string): string {
