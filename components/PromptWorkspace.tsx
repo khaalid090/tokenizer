@@ -24,10 +24,6 @@ interface PromptWorkspaceProps {
   tokenizerReady?: boolean;
   /** Units deleted by lossy mode, surfaced so nothing is removed silently. */
   droppedUnits?: DroppedUnit[];
-  /** Whether the paid tier is active, so the gated Lossy button can be enabled. */
-  pro?: boolean;
-  /** Opens the upgrade card (Settings modal) when a free user clicks Lossy. */
-  onOpenUpgrade?: () => void;
 }
 
 export function PromptWorkspace({
@@ -47,8 +43,6 @@ export function PromptWorkspace({
   warning,
   tokenizerReady = true,
   droppedUnits = [],
-  pro = false,
-  onOpenUpgrade,
 }: PromptWorkspaceProps) {
   const [showDropped, setShowDropped] = useState(false);
   const [copiedOriginal, setCopiedOriginal] = useState(false);
@@ -74,23 +68,13 @@ export function PromptWorkspace({
             Compression Mode:
           </span>
           <div className="inline-flex p-1 bg-surface-raised/70 rounded-xl border border-slate-800">
-            {(["lossless", "balanced", "aggressive", "lossy"] as CompressionMode[]).map((m) => {
-                const gated = m === "lossy" && !pro;
-                return (
-                  <button
+            {(["lossless", "balanced", "aggressive", "lossy"] as CompressionMode[]).map((m) => (
+                <button
                     key={m}
-                    onClick={() => {
-                      if (gated && onOpenUpgrade) {
-                        onOpenUpgrade();
-                        return;
-                      }
-                      setMode(m);
-                    }}
+                    onClick={() => setMode(m)}
                     title={
                       m === "lossy"
-                        ? gated
-                          ? "Pro feature — click to upgrade and enable content-deleting compression"
-                          : "Deletes the lowest-value sentences to hit a savings target. Content is removed."
+                        ? "Deletes the lowest-value sentences to hit a savings target. Content is removed."
                         : undefined
                     }
                     className={`px-3 py-1.5 text-xs font-medium rounded-lg capitalize transition-all duration-200 ${
@@ -98,8 +82,6 @@ export function PromptWorkspace({
                         ? m === "lossy"
                           ? "bg-gradient-to-r from-rose-600 to-amber-600 text-white shadow-md shadow-rose-500/25"
                           : "bg-gradient-to-r from-violet-600 to-cyan-600 text-white shadow-md shadow-violet-500/20"
-                        : gated
-                        ? "text-slate-500 cursor-not-allowed hover:text-slate-400"
                         : m === "lossy"
                         ? "text-rose-300 hover:text-rose-200 hover:bg-rose-950/40"
                         : "text-slate-400 hover:text-slate-200"
@@ -107,11 +89,10 @@ export function PromptWorkspace({
                   >
                     {m}
                     {m === "lossy" && (
-                      <span className="ml-1 text-rose-300/80">{gated ? "🔒" : "⚠"}</span>
+                      <span className="ml-1 text-rose-300/80">⚠</span>
                     )}
                   </button>
-                );
-              })}
+              ))}
           </div>
         </div>
 

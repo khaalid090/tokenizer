@@ -1,6 +1,5 @@
 import { CompressionMode, DroppedUnit, OptimizationResult, PipelineStageResult } from "../types";
 import { countTokens, estimateCostUSD, DEFAULT_PRICE_PER_1M } from "../tokens";
-import { canUseMode } from "../license";
 import { extractProtectedSpans, restoreProtectedSpans } from "./protect";
 import { normalize } from "./normalize";
 import { compressPhrases } from "./compress";
@@ -49,17 +48,9 @@ export function optimizePrompt(
   const mode = options.mode || "balanced";
   const pricePer1M = options.pricePer1M ?? DEFAULT_PRICE_PER_1M;
 
-  // License gate. `lossy` is the only mode that deletes content, so it is
-  // reserved for paid users. Free users fall back to `aggressive` (the most
-  // compression the free tier allows) and get a warning saying so, rather than
-  // silently running a destructive pass or throwing mid-pipeline.
-  let gatedNotice: string | undefined;
-  let effectiveMode = mode;
-  if (mode === "lossy" && !canUseMode(mode)) {
-    effectiveMode = "aggressive";
-    gatedNotice =
-      "Lossy is a Pro feature — you ran the most aggressive free mode instead. Upgrade in Settings to delete low-value content.";
-  }
+  // Every mode - including `lossy` - runs for everyone. Lossy simply deletes
+  // content, which is opt-in by choosing the mode.
+  const effectiveMode = mode;
 
   if (!prompt || !prompt.trim()) {
     return {
@@ -230,12 +221,6 @@ export function optimizePrompt(
     warning =
       warning ??
       "Nothing safe to compress - the original is already the shortest form.";
-  }
-
-  // Surface the license gate notice above any other warning so it is impossible
-  // to miss: a free user asked for lossy and got aggressive instead.
-  if (gatedNotice) {
-    warning = warning ? `${gatedNotice} (${warning})` : gatedNotice;
   }
 
   const finalTokens = countTokens(finalPrompt);
