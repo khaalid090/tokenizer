@@ -1,0 +1,19 @@
+# desktop / native (not needed for web deploy)
+src-tauri/
+*.msi
+*.exe
+
+# local / tooling
+__tests__/
+scripts/
+*.bat
+*.ps1
+*.cmd
+data/
+tokenizer/
+
+# lock/build artifacts already excluded by gitignore normally
+node_modules/
+.next/
+out/
+src-tauri/target/
